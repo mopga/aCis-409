@@ -298,7 +298,7 @@ public class EnterWorld extends L2GameClientPacket
 
 private void giveStarterPackOnce(net.sf.l2j.gameserver.model.actor.Player player) {
     if (!net.sf.l2j.Config.STARTER_PACK) return;
-    if (!player.isNewbie(true)) return; // выдаём только новичкам (твоя идея)
+    //if (!player.isNewbie(true)) return; 
 
     final int charId = player.getObjectId();
     if (hasStarterFlag(charId)) return; // уже выдавали

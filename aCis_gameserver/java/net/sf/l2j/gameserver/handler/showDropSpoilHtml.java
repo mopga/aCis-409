@@ -21,40 +21,41 @@ public class showDropSpoilHtml {
   private showDropSpoilHtml() {}
 
   public static void buildAndSend(Player player, Attackable mob) {
-    final int npcId = mob.getNpcId();
-    final String html = getOrBuild(mob.getTemplate(), npcId);
-    NpcHtmlMessage msg = new NpcHtmlMessage(0);
-    msg.setHtml(html);
-    player.sendPacket(msg);
+      final boolean isRaid = mob.isRaidBoss(); // или mob.isRaidBoss() в твоей ветке
+      final int cacheKey = mob.getNpcId() ^ (isRaid ? 0x40000000 : 0); // разный key для рейдов
+      final String html = getOrBuild(mob.getTemplate(), cacheKey, isRaid);
+      NpcHtmlMessage msg = new NpcHtmlMessage(0);
+      msg.setHtml(html);
+      player.sendPacket(msg);
   }
 
   // ----- internals -----
 
-  private static String getOrBuild(NpcTemplate tpl, int npcId) {
-    final long now = System.nanoTime();
-    Cache c = CACHE.get(npcId);
-    if (c != null && now - c.ts < TTL_NANOS) return c.html;
-    String html = buildHtml(tpl);
-    CACHE.put(npcId, new Cache(html, now));
-    return html;
+  private static String getOrBuild(NpcTemplate tpl, int cacheKey, boolean isRaid) {
+      final long now = System.nanoTime();
+      Cache c = CACHE.get(cacheKey);
+      if (c != null && now - c.ts < TTL_NANOS) return c.html;
+      String html = buildHtml(tpl, isRaid);
+      CACHE.put(cacheKey, new Cache(html, now));
+      return html;
   }
 
-  private static String buildHtml(NpcTemplate tpl) {
-    StringBuilder sb = new StringBuilder(4096);
-    sb.append("<html><title>Loot</title><body>");
-    sb.append("<center><img src=\"icon.etc_coin_gold_i00\" width=32 height=32></center>");
-    sb.append("<center><font color=LEVEL>")
-      .append(esc(tpl.getName()))
-      .append(" (ID: ").append(tpl.getNpcId()).append(")</font></center><br>");
+  private static String buildHtml(NpcTemplate tpl, boolean isRaid) {
+      StringBuilder sb = new StringBuilder(4096);
+      sb.append("<html><title>Loot</title><body>");
+      sb.append("<center><img src=\"icon.etc_crystal_gold_i00\" width=32 height=32></center>");
+      sb.append("<center><font color=LEVEL>")
+        .append(esc(tpl.getName()))
+        .append(" (ID: ").append(tpl.getNpcId()).append(")</font></center><br>");
 
-    appendDropBlock(sb, "Дроп (drop)", tpl, DropType.DROP);
-    sb.append("<br>");
-    appendDropBlock(sb, "Спойл (spoil)", tpl, DropType.SPOIL);
-    sb.append("<br>");
-    appendDropBlock(sb, "Валюты (currency)", tpl, DropType.CURRENCY);
+      appendDropBlock(sb, "Дроп (drop)", tpl, DropType.DROP, isRaid);
+      sb.append("<br>");
+      appendDropBlock(sb, "Спойл (spoil)", tpl, DropType.SPOIL, isRaid);
+      sb.append("<br>");
+      appendDropBlock(sb, "Валюты (currency)", tpl, DropType.CURRENCY, isRaid);
 
-    sb.append("</body></html>");
-    return sb.toString();
+      sb.append("</body></html>");
+      return sb.toString();
   }
 
 
@@ -68,81 +69,137 @@ public class showDropSpoilHtml {
   }
 
 
-private static void appendDropBlock(StringBuilder sb, String title, NpcTemplate tpl, DropType type) {
-    sb.append("<font color=LEVEL>").append(title).append("</font><br>");
+  private static void appendDropBlock(StringBuilder sb, String title, NpcTemplate tpl, DropType type, boolean isRaid) {
+      sb.append("<font color=LEVEL>").append(title).append("</font><br>");
 
-    // собрать элементы из категорий данного типа
-    java.util.List<DropCategory> cats = tpl.getDropData();
-    if (cats == null || cats.isEmpty()) {
-        sb.append("<font color=777777>&nbsp;&nbsp;Нет записей</font><br>");
-        return;
-    }
+      var cats = tpl.getDropData();
+      if (cats == null || cats.isEmpty()) {
+          sb.append("<font color=777777>&nbsp;&nbsp;Нет записей</font><br>");
+          return;
+      }
 
-    java.util.List<View> items = new java.util.ArrayList<>(64);
-    for (DropCategory cat : cats) {
-        if (cat == null || cat.getDropType() != type || cat.isEmpty()) continue;
+      final double rate = type.getDropRate(isRaid); // берём из твоего enum
 
-        // шанс категории (в %) – нормализуем
-        double catPct = normalizeToPercent(cat.getChance()); // 0..100
+      var items = new java.util.ArrayList<View>(64);
+      for (DropCategory cat : cats) {
+          if (cat == null || cat.getDropType() != type || cat.isEmpty()) continue;
 
-        for (DropData d : cat) {
-            var it = net.sf.l2j.gameserver.data.xml.ItemData.getInstance().getTemplate(d.itemId());
-            if (it == null) continue;
+          final double catPct = normalizeToPercent(cat.getChance()); // 0..100
 
-            // шанс предмета (в %) – нормализуем
-            double itemPct = normalizeToPercent(d.chance());
+          for (DropData d : cat) {
+              var it = net.sf.l2j.gameserver.data.xml.ItemData.getInstance().getTemplate(d.itemId());
+              if (it == null) continue;
 
-            // эффективный шанс на килл:
-            // для DROP обычно умножаем на шанс категории; для SPOIL тоже не повредит,
-            // но если у тебя cat=100, то это то же самое.
-            double effPct = itemPct * (catPct / 100.0);
+              int min = d.minDrop();
+              int max = d.maxDrop();
 
-            items.add(new View(it.getName(), d.minDrop(), d.maxDrop(), effPct));
-        }
-    }
+              // базовый шанс предмета в %
+              double itemPct = normalizeToPercent(d.chance());
 
-    if (items.isEmpty()) {
-        sb.append("<font color=777777>&nbsp;&nbsp;Нет записей</font><br>");
-        return;
-    }
+              if (type == DropType.CURRENCY) {
+                  // валюте множим количество, шанс не трогаем
+                  min = safeMulRound(min, rate);
+                  max = safeMulRound(max, rate);
+                  double effPct = itemPct * (catPct / 100.0);
+                  int guaranteed =  (int) Math.floor(effPct / 100.0);
+                  double rem = effPct - guaranteed * 100.0;
+                  items.add(new View(it.getName(), min, max, guaranteed, rem));
+              } else {
+                  // предметы/спойл: множим шанс на rate
+                  double effPct = itemPct * (catPct / 100.0) * rate;
+                  int guaranteed =  (int) Math.floor(effPct / 100.0);
+                  double rem = effPct - guaranteed * 100.0;
+                  items.add(new View(it.getName(), min, max, guaranteed, rem));
+              }
+          }
+      }
 
-    // сортировка по убыванию эффективного шанса
-    items.sort((a, b) -> Double.compare(b.effPct, a.effPct));
+      if (items.isEmpty()) {
+          sb.append("<font color=777777>&nbsp;&nbsp;Нет записей</font><br>");
+          return;
+      }
 
-    // печать: "Название — шанс: X%"
-    for (View v : items) {
-        sb.append("&nbsp;&nbsp;")
-          .append(esc(v.name))
-          .append(" — шанс: ").append(formatChancePct(v.effPct));
+      // сортируем по убыванию: сначала гарант >, затем остаток
+      items.sort((a, b) -> {
+          int cmpG = Integer.compare(b.guaranteed, a.guaranteed);
+          if (cmpG != 0) return cmpG;
+          return Double.compare(b.remPct, a.remPct);
+      });
 
-        // компактный вывод количества
-        if (v.min == v.max) sb.append(" (").append(v.min).append(" шт)");
-        else sb.append(" (").append("от ").append(v.min).append(" до ").append(v.max).append(")");
+      // вывод в 1 строку: "Название — шанс: 100%xg + X% (кол-во: gxmin-gxmax [+min-max])"
+      for (View v : items) {
+          sb.append("&nbsp;&nbsp;").append(esc(v.name)).append(" — шанс: ");
+          if (v.guaranteed > 0) {
+              sb.append("100%x").append(v.guaranteed);
+              if (v.remPct > 0.0) sb.append(" + ").append(formatChanceRated(v.remPct));
+          } else {
+              sb.append(formatChanceRated(v.remPct));
+          }
 
-        sb.append("<br>");
-    }
-}
+          // Кол-во: гарантированная часть даёт gx[min..max], остаток — ещё +[min..max] с шансом rem
+          sb.append(" (кол-во: ");
+          if (v.guaranteed > 0) {
+              int gMin = safeMulRound(v.min, v.guaranteed);
+              int gMax = safeMulRound(v.max, v.guaranteed);
+              if (gMin == gMax) sb.append(gMin);
+              else sb.append(gMin).append("-").append(gMax);
+              if (v.remPct > 0.0) sb.append(" + ").append(v.min == v.max ? v.min : (v.min + "-" + v.max));
+          } else {
+              if (v.min == v.max) sb.append(v.min);
+              else sb.append(v.min).append("-").append(v.max);
+          }
+          sb.append(")");
 
-// Приводим «как хранится в XML» к «процентам 0..100»
-private static double normalizeToPercent(double raw) {
-    if (raw <= 0) return 0.0;
-    if (raw > 1000.0) return raw / 10000.0;  // 1_000_000 = 100%
-    if (raw > 1.0)   return raw;             // уже проценты (0..100)
-    return raw * 100.0;                      // доля 0..1
-}
+          sb.append("<br>");
+      }
+  }
 
-private static String formatChancePct(double pct) {
-    if (pct >= 1.0) return String.format(java.util.Locale.US, "%.2f%%", pct);
-    if (pct <= 0.0) return "0%";
-    long denom = Math.max(1, Math.round(100.0 / pct)); // 0.12% → 1/833
-    return "1/" + denom;
-}
+
+
+  // «сырой» шанс из XML в проценты 0..100
+  private static double normalizeToPercent(double raw) {
+      if (raw <= 0) return 0.0;
+      if (raw > 1000.0) return raw / 10000.0; // 1_000_000 = 100%
+      if (raw > 1.0)   return raw;            // уже проценты (0..100)
+      return raw * 100.0;                     // доля 0..1
+  }
+
+  // форматируем шанс с учётом гарантированных кусков >100%
+  private static String formatChanceRated(double pct) {
+      if (pct <= 0.0) return "0%";
+      if (pct < 1.0) {
+          long denom = Math.max(1, Math.round(100.0 / pct)); // 0.12% → 1/833
+          return "1/" + denom;
+      }
+      if (pct < 100.0) {
+          return String.format(java.util.Locale.US, "%.2f%%", pct);
+      }
+      // 100%+ : гарантированное количество + остаток
+      int guaranteed = (int) Math.floor(pct / 100.0);
+      double rem = pct - guaranteed * 100.0;
+      if (rem >= 1.0) {
+          return "100% x" + guaranteed + " + " + String.format(java.util.Locale.US, "%.2f%%", rem);
+      } else if (rem > 0.0) {
+          long denom = Math.max(1, Math.round(100.0 / rem));
+          return "100% x" + guaranteed + " + 1/" + denom;
+      } else {
+          return "100% x" + guaranteed;
+      }
+  }
+
+  // безопасное умножение количества (для валюты)
+  private static int safeMulRound(int base, double rate) {
+      double v = base * rate;
+      if (v > Integer.MAX_VALUE) return Integer.MAX_VALUE;
+      return (int) Math.round(v);
+  }
 
 private static final class View {
     final String name;
     final int min, max;
-    final double effPct;
-    View(String n, int mi, int ma, double p) { name = n; min = mi; max = ma; effPct = p; }
+    final int guaranteed;   // число гарантированных проков (каждый даёт min..max)
+    final double remPct;    // шанс на ещё один прок
+    View(String n, int mi, int ma, int g, double r) { name=n; min=mi; max=ma; guaranteed=g; remPct=r; }
 }
 
 }

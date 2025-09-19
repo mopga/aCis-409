@@ -269,6 +269,9 @@ public final class Config
 	public static int FREIGHT_SLOTS;
 	public static boolean REGION_BASED_FREIGHT;
 	public static int FREIGHT_PRICE;
+	public static boolean STARTER_PACK;
+	public static int STARTER_ADENA;
+	public static String STARTER_ITEMS;
 	
 	/** Enchant */
 	public static double ENCHANT_CHANCE_WEAPON_MAGIC;
@@ -801,6 +804,10 @@ public final class Config
 		FREIGHT_SLOTS = players.getProperty("MaximumFreightSlots", 20);
 		REGION_BASED_FREIGHT = players.getProperty("RegionBasedFreight", true);
 		FREIGHT_PRICE = players.getProperty("FreightPrice", 1000);
+
+		STARTER_PACK  = yesNo(players, "StarterPack", false);
+		STARTER_ADENA = Integer.parseInt(players.getProperty("StarterAdena", "0"));
+		STARTER_ITEMS = players.getProperty("StarterItems", "").trim();
 		
 		ENCHANT_CHANCE_WEAPON_MAGIC = players.getProperty("EnchantChanceMagicWeapon", 0.4);
 		ENCHANT_CHANCE_WEAPON_MAGIC_15PLUS = players.getProperty("EnchantChanceMagicWeapon15Plus", 0.2);
@@ -898,7 +905,21 @@ public final class Config
 
 	}
 
-
+	public static java.util.List<int[]> parseItemList(String spec) {
+		var out = new java.util.ArrayList<int[]>();
+		if (spec == null || spec.isEmpty()) return out;
+		for (String token : spec.split(";")) {
+			token = token.trim();
+			if (token.isEmpty()) continue;
+			String[] parts = token.split(",");
+			try {
+				int id = Integer.parseInt(parts[0].trim());
+				int count = (parts.length > 1) ? Integer.parseInt(parts[1].trim()) : 1;
+				if (id > 0 && count >= 0) out.add(new int[]{id, count});
+			} catch (Exception ignore) {}
+		}
+		return out;
+	}
 
 	/**
 	 * Loads siege settings.

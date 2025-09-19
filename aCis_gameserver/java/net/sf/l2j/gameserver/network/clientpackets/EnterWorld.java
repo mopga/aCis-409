@@ -1,6 +1,13 @@
 package net.sf.l2j.gameserver.network.clientpackets;
 
 import java.util.Map.Entry;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+
+import net.sf.l2j.commons.logging.CLogger;
+import net.sf.l2j.commons.pool.ConnectionPool;
 
 import net.sf.l2j.Config;
 import net.sf.l2j.gameserver.communitybbs.manager.MailBBSManager;
@@ -54,8 +61,13 @@ import net.sf.l2j.gameserver.scripting.QuestState;
 import net.sf.l2j.gameserver.skills.L2Skill;
 import net.sf.l2j.gameserver.taskmanager.GameTimeTaskManager;
 
+
 public class EnterWorld extends L2GameClientPacket
 {
+
+	private static final String Q_CHECK = "SELECT 1 FROM character_quests WHERE charId=? AND name=? AND var=? LIMIT 1";
+	private static final String Q_SET = "INSERT INTO character_quests (charId, name, var, value) VALUES (?, ?, ?, ?) " + "ON DUPLICATE KEY UPDATE value=VALUES(value)";
+
 	@Override
 	protected void readImpl()
 	{
@@ -189,6 +201,8 @@ public class EnterWorld extends L2GameClientPacket
 			player.setSpawnProtection(true);
 		
 		player.spawnMe();
+
+		giveStarterPackOnce(player);
 		
 		// Set the location of debug packets.
 		player.setEnterWorldLoc(player.getX(), player.getY(), -16000);
@@ -281,4 +295,65 @@ public class EnterWorld extends L2GameClientPacket
 	{
 		return false;
 	}
+
+private void giveStarterPackOnce(net.sf.l2j.gameserver.model.actor.Player player) {
+    if (!net.sf.l2j.Config.STARTER_PACK) return;
+    if (!player.isNewbie(true)) return; // выдаём только новичкам (твоя идея)
+
+    final int charId = player.getObjectId();
+    if (hasStarterFlag(charId)) return; // уже выдавали
+
+    // 1) адена
+    if (net.sf.l2j.Config.STARTER_ADENA > 0) {
+        player.addAdena(net.sf.l2j.Config.STARTER_ADENA, true);
+    }
+
+    // 2) предметы
+    for (int[] spec : net.sf.l2j.Config.parseItemList(net.sf.l2j.Config.STARTER_ITEMS)) {
+        int itemId = spec[0], count = spec[1];
+        if (count <= 0) continue;
+        if (itemId == 57) { // если в списке указали адену
+            player.addAdena(net.sf.l2j.Config.STARTER_ADENA, true);
+            continue;
+        }
+        var inst = player.getInventory().addItem(itemId, count);
+        if (inst != null && count == 1) {
+            try { player.getInventory().equipItemAndRecord(inst); } catch (Throwable ignored) {}
+        }
+    }
+
+    // 3) фиксируем флаг в character_quests
+    setStarterFlag(charId);
+
+    player.sendMessage("Starter pack delivered.");
+}
+
+private static boolean hasStarterFlag(int charId) {
+    try (Connection con = ConnectionPool.getConnection();
+         PreparedStatement ps = con.prepareStatement(Q_CHECK)) {
+        ps.setInt(1, charId);
+        ps.setString(2, "StarterPack");
+        ps.setString(3, "done");
+        try (ResultSet rs = ps.executeQuery()) {
+            return rs.next();
+        }
+    } catch (Exception e) {
+        LOGGER.error("Couldn't get flag :.", e);
+        return false; // в сомнении считаем, что флага нет (чтобы не ломать флоу)
+    }
+}
+
+private static void setStarterFlag(int charId) {
+    try (Connection con = ConnectionPool.getConnection();
+         PreparedStatement ps = con.prepareStatement(Q_SET)) {
+        ps.setInt(1, charId);
+        ps.setString(2, "StarterPack");
+        ps.setString(3, "done");
+        ps.setString(4, "1");
+        ps.executeUpdate();
+    } catch (Exception e) {
+        LOGGER.error("Couldn't set flag :.", e);
+    }
+}
+
 }

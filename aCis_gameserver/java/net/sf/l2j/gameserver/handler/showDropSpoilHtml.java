@@ -1,10 +1,8 @@
 package net.sf.l2j.gameserver.handler;
 
-import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
-import javax.swing.text.View;
 
 import net.sf.l2j.gameserver.enums.DropType;
 import net.sf.l2j.gameserver.model.actor.Attackable;
@@ -52,6 +50,8 @@ public class showDropSpoilHtml {
     appendDropBlock(sb, "Дроп (drop)", tpl, DropType.DROP);
     sb.append("<br>");
     appendDropBlock(sb, "Спойл (spoil)", tpl, DropType.SPOIL);
+    sb.append("<br>");
+    appendDropBlock(sb, "Валюты (currency)", tpl, DropType.CURRENCY);
 
     sb.append("</body></html>");
     return sb.toString();
@@ -62,36 +62,11 @@ public class showDropSpoilHtml {
     return s == null ? "" : s.replace("<","&lt;").replace(">","&gt;");
   }
 
-  private static String formatCount(int min, int max) {
-    if (min == max) return (min == 1 ? "1 шт" : (min + " шт"));
-    return "от " + min + " до " + max;
-  }
-
-  private static String formatChance(double stored) {
-        if (stored <= 0.0) return "0%";
-        double pct = stored / DropData.PERCENT_CHANCE; // 10000 = 1%
-        if (pct >= 1.0) return String.format(java.util.Locale.US, "%.2f%%", pct);
-        long denom = Math.max(1, Math.round(100.0 / pct)); // 0.14% → 1/714
-        return "1/" + denom;
-  }
-
   private static final class Cache {
     final String html; final long ts;
     Cache(String h, long t) { html = h; ts = t; }
   }
 
-private static java.util.List<DropData> getList(NpcTemplate tpl, DropType type) {
-    java.util.List<DropData> out = new java.util.ArrayList<>();
-    java.util.List<DropCategory> cats = tpl.getDropData(); // List<DropCategory>, а каждая категория это List<DropData>
-    if (cats != null) {
-        for (DropCategory cat : cats) {
-            if (cat != null && cat.getDropType() == type && !cat.isEmpty()) {
-                out.addAll(cat); // <- категория сама по себе List<DropData>
-            }
-        }
-    }
-    return out;
-}
 
 private static void appendDropBlock(StringBuilder sb, String title, NpcTemplate tpl, DropType type) {
     sb.append("<font color=LEVEL>").append(title).append("</font><br>");

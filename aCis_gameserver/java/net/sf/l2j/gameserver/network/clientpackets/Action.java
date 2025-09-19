@@ -4,8 +4,12 @@ import net.sf.l2j.gameserver.enums.duels.DuelState;
 import net.sf.l2j.gameserver.model.World;
 import net.sf.l2j.gameserver.model.WorldObject;
 import net.sf.l2j.gameserver.model.actor.Player;
+import net.sf.l2j.gameserver.model.actor.Attackable;
 import net.sf.l2j.gameserver.network.SystemMessageId;
 import net.sf.l2j.gameserver.network.serverpackets.ActionFailed;
+import net.sf.l2j.gameserver.handler.showDropSpoilHtml;
+import net.sf.l2j.Config;
+
 
 public final class Action extends L2GameClientPacket
 {
@@ -42,6 +46,7 @@ public final class Action extends L2GameClientPacket
 			return;
 		}
 		
+
 		final WorldObject target = (player.getTargetId() == _objectId) ? player.getTarget() : World.getInstance().getObject(_objectId);
 		if (target == null)
 		{
@@ -53,6 +58,13 @@ public final class Action extends L2GameClientPacket
 		if (targetPlayer != null && targetPlayer.getDuelState() == DuelState.DEAD)
 		{
 			player.sendPacket(SystemMessageId.OTHER_PARTY_IS_FROZEN);
+			player.sendPacket(ActionFailed.STATIC_PACKET);
+			return;
+		}
+
+		if (Config.SHOW_DROP_ON_SHIFTCLICK && _isShiftAction && target instanceof Attackable)
+		{
+			showDropSpoilHtml.buildAndSend(player, (Attackable) target);
 			player.sendPacket(ActionFailed.STATIC_PACKET);
 			return;
 		}

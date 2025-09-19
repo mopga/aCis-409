@@ -254,6 +254,8 @@ public final class Config
 	public static boolean DEEPBLUE_DROP_RULES;
 	public static boolean ALLOW_DELEVEL;
 	public static int DEATH_PENALTY_CHANCE;
+	public static boolean SHOW_DROP_ON_SHIFTCLICK;
+
 	
 	/** Inventory & WH */
 	public static int INVENTORY_MAXIMUM_NO_DWARF;
@@ -345,6 +347,8 @@ public final class Config
 	/** Buffs */
 	public static boolean STORE_SKILL_COOLTIME;
 	public static int MAX_BUFFS_AMOUNT;
+
+	public static int BUFF_TIME_DURATION;
 	
 	// --------------------------------------------------
 	// Sieges
@@ -759,6 +763,15 @@ public final class Config
 	 * Loads player settings.<br>
 	 * Such as stats, inventory/warehouse, enchant, augmentation, karma, party, admin, petition, skill learn.
 	 */
+
+		
+	private static boolean yesNo(Properties p, String k, boolean defVal) {
+		String v = p.getProperty(k);
+		if (v == null) return defVal;
+		v = v.trim().toLowerCase();
+		return v.equals("yes") || v.equals("true") || v.equals("1") || v.equals("on");
+	}
+	
 	private static final void loadPlayers()
 	{
 		final ExProperties players = initProperties(PLAYERS_FILE);
@@ -775,7 +788,8 @@ public final class Config
 		DEEPBLUE_DROP_RULES = players.getProperty("UseDeepBlueDropRules", true);
 		ALLOW_DELEVEL = players.getProperty("AllowDelevel", true);
 		DEATH_PENALTY_CHANCE = players.getProperty("DeathPenaltyChance", 20);
-		
+		SHOW_DROP_ON_SHIFTCLICK = yesNo(players, "ShowDropOnShiftClick", true);
+
 		INVENTORY_MAXIMUM_NO_DWARF = players.getProperty("MaximumSlotsForNoDwarf", 80);
 		INVENTORY_MAXIMUM_DWARF = players.getProperty("MaximumSlotsForDwarf", 100);
 		INVENTORY_MAXIMUM_PET = players.getProperty("MaximumSlotsForPet", 12);
@@ -879,8 +893,13 @@ public final class Config
 		
 		MAX_BUFFS_AMOUNT = players.getProperty("MaxBuffsAmount", 20);
 		STORE_SKILL_COOLTIME = players.getProperty("StoreSkillCooltime", true);
+
+		BUFF_TIME_DURATION  = players.getProperty("BuffTimeDuration", 1200);
+
 	}
-	
+
+
+
 	/**
 	 * Loads siege settings.
 	 */

@@ -3,6 +3,7 @@ package net.sf.l2j.gameserver.model.item;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import net.sf.l2j.commons.random.Rnd;
@@ -16,6 +17,8 @@ public class DropCategory extends ArrayList<DropData>
 	
 	private final DropType _dropType;
 	private final double _chance;
+
+	private final List<DropData> _drops = new ArrayList<>();
 	
 	public DropCategory(DropType dropType, double chance)
 	{
@@ -38,7 +41,11 @@ public class DropCategory extends ArrayList<DropData>
 	{
 		return _chance;
 	}
-	
+
+	public List<DropData> getDrops() {
+        return _drops;
+    }
+
 	/**
 	 * Calculates drops of this {@link DropCategory}.
 	 * @param levelMultiplier : The input level modifier of the last attacker.

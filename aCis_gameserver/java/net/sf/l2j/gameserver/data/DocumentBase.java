@@ -13,6 +13,7 @@ import javax.xml.parsers.DocumentBuilderFactory;
 
 import net.sf.l2j.commons.data.StatSet;
 import net.sf.l2j.commons.logging.CLogger;
+import net.sf.l2j.Config;
 
 import net.sf.l2j.gameserver.enums.actors.ClassRace;
 import net.sf.l2j.gameserver.enums.items.ArmorType;
@@ -210,9 +211,32 @@ abstract class DocumentBase
 		if (attrs.getNamedItem("count") != null)
 			count = Integer.decode(getValue(attrs.getNamedItem("count").getNodeValue(), template));
 		
-		if (attrs.getNamedItem("time") != null)
+		if (attrs.getNamedItem("time") != null) 
+		{
 			time = Integer.decode(getValue(attrs.getNamedItem("time").getNodeValue(), template));
+			boolean isBuff = false;
+			Node et = attrs.getNamedItem("effectType");
+
+			if (et != null) {
+				String v = getValue(et.getNodeValue(), template);
+				try { isBuff |= (SkillType.valueOf(v) == SkillType.BUFF); }
+				catch (Exception ignored) { isBuff |= "BUFF".equalsIgnoreCase(v); }
+			}
+			if (template instanceof net.sf.l2j.gameserver.skills.L2Skill sk) {
+				isBuff |= (sk.getSkillType() == SkillType.BUFF);
+
+			}
+
+			String effName = getValue(attrs.getNamedItem("name").getNodeValue(), template);
+			isBuff |= "Buff".equalsIgnoreCase(effName);
+
+			if (time > 0 && isBuff) { 
+
+						time = Config.BUFF_TIME_DURATION;
+				}
+			}
 		
+
 		boolean self = false;
 		if (attrs.getNamedItem("self") != null && Integer.decode(getValue(attrs.getNamedItem("self").getNodeValue(), template)) == 1)
 			self = true;
